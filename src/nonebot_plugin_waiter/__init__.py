@@ -5,16 +5,17 @@ from typing_extensions import Self
 from typing import Any, Generic, TypeVar, Iterable, Awaitable, overload
 
 from nonebot import get_driver
+from nonebot.plugin.on import on
 from nonebot.matcher import Matcher
-from nonebot.plugin.on import on_message
 from nonebot.plugin import PluginMetadata
 from nonebot.dependencies import Dependent
 from nonebot.internal.adapter import Bot, Event
+from nonebot.internal.matcher import current_matcher
 from nonebot.typing import T_State, _DependentCallable
 
 from .config import Config
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 __plugin_meta__ = PluginMetadata(
     name="Waiter 插件",
@@ -66,12 +67,26 @@ class Waiter(Generic[R]):
     handler: _DependentCallable[R]
 
     def __init__(
-        self, handler: _DependentCallable[R], params: tuple, parameterless: Iterable[Any] | None = None
+        self,
+        waits: list[type[Event] | str],
+        handler: _DependentCallable[R],
+        matcher: type[Matcher] | Matcher,
+        parameterless: Iterable[Any] | None = None,
     ):
+        if waits:
+            event_types = tuple([e for e in waits if not isinstance(e, str)])
+            event_str_types = tuple([e for e in waits if isinstance(e, str)])
+        else:
+            event_types = ()
+            event_str_types = (matcher.type, )
         self.future = asyncio.Future()
-        _handler = Dependent[Any].parse(call=handler, parameterless=parameterless, allow_types=params)
+        _handler = Dependent[Any].parse(call=handler, parameterless=parameterless, allow_types=matcher.HANDLER_PARAM_TYPES)
 
         async def wrapper(matcher: Matcher, bot: Bot, event: Event, state: T_State):
+            if event_types and not isinstance(event, event_types):
+                matcher.skip()
+            if event_str_types and event.get_type() not in event_str_types:
+                matcher.skip()
             if self.future.done():
                 matcher.skip()
             result = await _handler(
@@ -102,6 +117,12 @@ class Waiter(Generic[R]):
     def __call__(
         self, *, default: T | None = None, timeout: float = plugin_config.waiter_timeout
     ) -> WaiterIterator[R, T] | WaiterIterator[R, None]:
+        """等待用户输入并返回结果
+
+        参数:
+            default: 超时时返回的默认值
+            timeout: 等待超时时间
+        """
         return WaiterIterator(self, default, timeout)  # type: ignore
 
     @overload
@@ -115,7 +136,13 @@ class Waiter(Generic[R]):
     async def wait(
         self, *, default: R | T | None = None, timeout: float = plugin_config.waiter_timeout
     ) -> R | T | None:
-        matcher = on_message(priority=0, block=False, handlers=[self.handler])
+        """等待用户输入并返回结果
+
+        参数:
+            default: 超时时返回的默认值
+            timeout: 等待超时时间
+        """
+        matcher = on(priority=0, block=False, handlers=[self.handler])
         try:
             return await asyncio.wait_for(self.future, timeout)
         except asyncio.TimeoutError:
@@ -128,16 +155,28 @@ class Waiter(Generic[R]):
                 pass
 
 
-def waiter(matcher: type[Matcher] | Matcher, parameterless: Iterable[Any] | None = None):
+def waiter(
+    waits: list[type[Event] | str],
+    matcher: type[Matcher] | Matcher | None = None,
+    parameterless: Iterable[Any] | None = None,
+):
     """装饰一个函数来创建一个 `Waiter` 对象用以等待用户输入
 
     函数内需要自行判断输入是否符合预期并返回结果
 
     参数:
+        waits: 等待的事件类型列表，可以是 `Event` 的类型或事件的 `get_type()` 返回值；
+                如果为空则继承 `matcher` 参数的事件响应器类型
+        matcher: 所属的 `Matcher` 对象，如果不指定则使用当前上下文的 `Matcher`
         parameterless: 非参数类型依赖列表
     """
+    if not matcher:
+        try:
+            matcher = current_matcher.get()
+        except LookupError:
+            raise RuntimeError("No matcher found.")
 
     def wrapper(func: _DependentCallable[R]):
-        return Waiter(func, matcher.HANDLER_PARAM_TYPES, parameterless)
+        return Waiter(waits, func, matcher, parameterless)
 
     return wrapper

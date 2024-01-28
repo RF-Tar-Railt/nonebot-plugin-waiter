@@ -8,12 +8,12 @@ test = on_command("test")
 async def _(event: Event):
     await test.send("请输入数字")
 
-    @waiter(test)
+    @waiter(waits=["message"])
     async def check(event1: Event):
         if event.get_session_id() == event1.get_session_id():
             return event1.get_plaintext()
 
-    async for resp in check:
+    async for resp in check(timeout=60):
         if resp is None:
             await test.send("等待超时")
             break
