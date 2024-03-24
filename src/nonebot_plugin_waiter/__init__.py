@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import asyncio
 from typing_extensions import Self
-from typing import Any, Generic, TypeVar, Iterable, Awaitable, overload
+from typing import Any, Generic, TypeVar, Callable, Iterable, Awaitable, overload
 
-from nonebot import get_driver
 from nonebot.plugin.on import on
 from nonebot.matcher import Matcher
+from nonebot import get_plugin_config
 from nonebot.plugin import PluginMetadata
 from nonebot.dependencies import Dependent
 from nonebot.internal.adapter import Bot, Event
@@ -15,7 +15,7 @@ from nonebot.typing import T_State, _DependentCallable
 
 from .config import Config
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 __plugin_meta__ = PluginMetadata(
     name="Waiter 插件",
@@ -32,8 +32,7 @@ __plugin_meta__ = PluginMetadata(
     },
 )
 
-global_config = get_driver().config
-plugin_config = Config.parse_obj(global_config)
+plugin_config = get_plugin_config(Config)
 
 R = TypeVar("R")
 R1 = TypeVar("R1")
@@ -78,9 +77,11 @@ class Waiter(Generic[R]):
             event_str_types = tuple([e for e in waits if isinstance(e, str)])
         else:
             event_types = ()
-            event_str_types = (matcher.type, )
+            event_str_types = (matcher.type,)
         self.future = asyncio.Future()
-        _handler = Dependent[Any].parse(call=handler, parameterless=parameterless, allow_types=matcher.HANDLER_PARAM_TYPES)
+        _handler = Dependent[Any].parse(
+            call=handler, parameterless=parameterless, allow_types=matcher.HANDLER_PARAM_TYPES
+        )
 
         async def wrapper(matcher: Matcher, bot: Bot, event: Event, state: T_State):
             if event_types and not isinstance(event, event_types):
@@ -159,7 +160,7 @@ def waiter(
     waits: list[type[Event] | str],
     matcher: type[Matcher] | Matcher | None = None,
     parameterless: Iterable[Any] | None = None,
-):
+) -> Callable[[_DependentCallable[R]], Waiter[R]]:
     """装饰一个函数来创建一个 `Waiter` 对象用以等待用户输入
 
     函数内需要自行判断输入是否符合预期并返回结果

@@ -1,7 +1,7 @@
-from pydantic import Extra, Field, BaseModel
+from pydantic import Field, BaseModel
 
 
-class Config(BaseModel, extra=Extra.ignore):
+class Config(BaseModel):
     """Plugin Config Here"""
 
     waiter_timeout: float = Field(120)

@@ -4,6 +4,7 @@ from nonebot_plugin_waiter import waiter
 
 test = on_command("test")
 
+
 @test.handle()
 async def _(event: Event):
     await test.send("请输入数字")
