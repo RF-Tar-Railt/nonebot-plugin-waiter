@@ -10,14 +10,14 @@ from nonebot.matcher import Matcher
 from nonebot import get_plugin_config
 from nonebot.plugin import PluginMetadata
 from nonebot.dependencies import Dependent
-from nonebot.internal.adapter import Bot, Event
 from nonebot.typing import T_State, _DependentCallable
 from nonebot.internal.permission import User, Permission
 from nonebot.internal.matcher import current_event, current_matcher
+from nonebot.internal.adapter import Bot, Event, Message, MessageSegment, MessageTemplate
 
 from .config import Config
 
-__version__ = "0.4.0"
+__version__ = "0.4.1"
 
 __plugin_meta__ = PluginMetadata(
     name="Waiter 插件",
@@ -196,3 +196,27 @@ def waiter(
         return Waiter(waits, func, matcher, parameterless, permission)
 
     return wrapper
+
+
+async def prompt(
+    message: str | Message | MessageSegment | MessageTemplate, timeout: float = 120
+) -> Message | None:
+    """等待用户输入并返回结果
+
+    参数:
+        message: 提示消息
+        timeout: 等待超时时间
+    """
+    try:
+        matcher = current_matcher.get()
+    except LookupError:
+        raise RuntimeError("No matcher found.")
+
+    await matcher.send(message)
+
+    async def wrapper(event: Event):
+        return event.get_message()
+
+    wrapper.__annotations__ = {"event": Event}
+
+    return await waiter(["message"], matcher=matcher, keep_session=True)(wrapper).wait(timeout=timeout)

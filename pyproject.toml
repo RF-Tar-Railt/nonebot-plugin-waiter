@@ -1,6 +1,6 @@
 [project]
 name = "nonebot-plugin-waiter"
-version = "0.4.0"
+version = "0.4.1"
 description = "An alternative for got-and-reject in Nonebot"
 authors = [
     {name = "RF-Tar-Railt",email = "3165388245@qq.com"},

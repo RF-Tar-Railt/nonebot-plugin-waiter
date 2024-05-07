@@ -57,6 +57,16 @@ async for resp in check(timeout=60, default=False):
 - default: 超时时返回的默认值
 - timeout: 等待超时时间
 
+### 便捷函数
+
+插件提供了一个 `prompt` 函数用于直接等待用户输入，适用于等待用户输入文本消息：
+
+```python
+from nonebot_plugin_waiter import prompt
+
+resp = await prompt("xxxx", timeout=60)
+```
+
 ## 示例
 
 等待用户输入数字，超时时间为 60 秒，此时 waits 接收所有来自当前用户的消息事件。
