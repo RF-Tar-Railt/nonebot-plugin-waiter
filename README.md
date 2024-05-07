@@ -35,6 +35,7 @@ async def check(event: Event):
     如果 waits 为空则继承 `matcher` 参数的事件响应器类型
 - matcher: 所属的 `Matcher` 对象，如果不指定则使用当前上下文的 `Matcher`
 - parameterless: 非参数类型依赖列表
+- keep_session: 是否保持会话，即仅允许会话发起者响应
 
 ### 等待
 
@@ -58,7 +59,7 @@ async for resp in check(timeout=60, default=False):
 
 ## 示例
 
-等待用户输入数字，超时时间为 60 秒，此时 waits 接收所有消息事件。
+等待用户输入数字，超时时间为 60 秒，此时 waits 接收所有来自当前用户的消息事件。
 
 ```python
 from nonebot import on_command
@@ -68,13 +69,12 @@ from nonebot_plugin_waiter import waiter
 test = on_command("test")
 
 @test.handle()
-async def _(event: Event):
+async def _():
     await test.send("请输入数字")
 
-    @waiter(waits=["message"])
-    async def check(event1: Event):
-        if event.get_session_id() == event1.get_session_id():
-            return event1.get_plaintext()
+    @waiter(waits=["message"], keep_session=True)
+    async def check(event: Event):
+        return event.get_plaintext()
 
     async for resp in check(timeout=60):
         if resp is None:
@@ -124,7 +124,7 @@ async def _(bot: Bot, event: MessageEvent):
 
     @waiter(waits=[CallbackQueryEvent])
     async def check(event1: CallbackQueryEvent):
-        if event1.get_session_id() == event.get_session_id():
+        if ...:
             return event1.id, event1.message
 
     resp = await check.wait(timeout=30)
