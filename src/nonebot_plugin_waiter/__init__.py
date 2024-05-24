@@ -1,11 +1,9 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
 from typing_extensions import Self
-from inspect import iscoroutinefunction
 from collections.abc import Iterable, Awaitable
-from typing import Any, Generic, TypeVar, Callable, NoReturn, overload
+from typing import Any, Generic, TypeVar, Callable, NoReturn, overload, cast
 
 from nonebot.plugin.on import on
 from nonebot.matcher import Matcher
@@ -16,6 +14,7 @@ from nonebot.typing import T_State, _DependentCallable
 from nonebot.internal.permission import User, Permission
 from nonebot.internal.matcher import current_event, current_matcher
 from nonebot.internal.adapter import Bot, Event, Message, MessageSegment, MessageTemplate
+from nonebot.utils import run_sync, is_coroutine_callable
 
 from .config import Config
 
@@ -51,8 +50,7 @@ class WaiterIterator(Generic[R, T]):
         default: T,
         timeout: float = plugin_config.waiter_timeout,
         retry: int | None = None,
-        msg: Message | MessageTemplate = MessageTemplate(
-            plugin_config.waiter_retry_prompt),
+        msg: Message | MessageTemplate = MessageTemplate(plugin_config.waiter_retry_prompt),
     ):
         self.waiter = waiter
         self.timeout = timeout
@@ -103,8 +101,7 @@ class Waiter(Generic[R]):
         if waits:
             event_types = tuple([e for e in waits if not isinstance(e, str)])
             event_str_types = tuple([e for e in waits if isinstance(e, str)])
-            self.event_type = event_str_types[0] if len(
-                event_str_types) == 1 else ""
+            self.event_type = event_str_types[0] if len(event_str_types) == 1 else ""
         else:
             event_types = ()
             event_str_types = (matcher.type,)
@@ -133,8 +130,7 @@ class Waiter(Generic[R]):
                 await matcher.finish()
             matcher.skip()
 
-        wrapper.__annotations__ = {"matcher": Matcher,
-                                   "bot": Bot, "event": Event, "state": T_State}
+        wrapper.__annotations__ = {"matcher": Matcher, "bot": Bot, "event": Event, "state": T_State}
         self.handler = wrapper
         self.permission = permission
 
@@ -142,8 +138,7 @@ class Waiter(Generic[R]):
         return WaiterIterator(self, None)
 
     @overload
-    def __call__(self, *, default: T,
-                 timeout: float = 120) -> WaiterIterator[R, T]: ...
+    def __call__(self, *, default: T, timeout: float = 120) -> WaiterIterator[R, T]: ...
 
     @overload
     def __call__(self, *, timeout: float = 120) -> WaiterIterator[R, None]: ...
@@ -189,9 +184,7 @@ class Waiter(Generic[R]):
             msg = prompt.get_message_class()(prompt)
         else:
             msg = prompt
-
-        # type: ignore
-        return WaiterIterator(self, default, timeout, retry, msg)
+        return WaiterIterator(self, default, timeout, retry, msg)  # type: ignore
 
     @overload
     async def wait(
@@ -272,8 +265,7 @@ def waiter(
         except LookupError:
             permission = None
         else:
-            permission = Permission(User.from_event(
-                event, perm=matcher.permission))
+            permission = Permission(User.from_event(event, perm=matcher.permission))
 
     def wrapper(func: _DependentCallable[R]):
         return Waiter(waits, func, matcher, parameterless, permission)
@@ -282,10 +274,10 @@ def waiter(
 
 
 async def call_callable(func: Callable[[str], bool], s: str) -> bool:
-    if iscoroutinefunction(func):
-        return await func(s)
+    if is_coroutine_callable(func):
+        return await cast(Callable[[str], Awaitable[bool]], func)(s)
     else:
-        return func(s)
+        return await run_sync(cast(Callable[[str], bool], func))(s)
 
 
 async def prompt_until(
