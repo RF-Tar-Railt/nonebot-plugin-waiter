@@ -72,7 +72,29 @@ async for resp in check(timeout=60, default=False):
 ```python
 from nonebot_plugin_waiter import prompt
 
-resp = await prompt("xxxx", timeout=60)
+resp = await prompt("", timeout=60)
+```
+
+相应的，同时提供了一个 `prompt_until` 函数用于可重试一定次数地等待用户输入。
+
+```python
+from nonebot_plugin_waiter import prompt_until
+
+resp = await prompt_until(
+    "请输入数字",
+    lambda msg: msg.extract_plain_text().isdigit(),
+    timeout=60,
+    retry=5,
+    retry_prompt="输入错误，请输入数字。剩余次数：{count}",
+)
+```
+
+基于此，还有一个 `suggest` 函数，用于向用户展示候选项并等待输入。
+
+```python
+from nonebot_plugin_waiter import suggest
+
+resp = await suggest("xxx", ["a", "b", "c", "d"])
 ```
 
 ## 示例

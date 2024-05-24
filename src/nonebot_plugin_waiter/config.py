@@ -9,3 +9,15 @@ class Config(BaseModel):
 
     waiter_retry_prompt: str = Field("输入错误，请重新输入。剩余次数：{count}")
     """默认重试时的提示信息"""
+
+    waiter_timeout_prompt: str = Field("等待超时。")
+    """默认超时时的提示信息"""
+
+    waiter_limited_prompt: str = Field("重试次数已用完，输入失败。")
+    """默认重试次数用完时的提示信息"""
+
+    waiter_suggest_hint: str = Field("- {suggest}")
+    """默认建议信息的提示"""
+
+    waiter_suggest_sep: str = Field("\n")
+    """默认建议信息的分隔符"""

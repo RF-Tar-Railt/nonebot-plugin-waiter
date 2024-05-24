@@ -1,5 +1,6 @@
 from nonebot import on_command
 from nonebot.adapters import Event
+
 from nonebot_plugin_waiter import waiter
 
 test = on_command("test")
