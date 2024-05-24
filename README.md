@@ -45,6 +45,12 @@ async def check(event: Event):
 resp = await check.wait(timeout=60, default=False)
 ```
 
+参数：
+
+- before: 等待前发送的消息
+- default: 超时时返回的默认值
+- timeout: 等待超时时间
+
 或使用异步迭代器持续等待，直到满足结果才退出循环。适合多轮对话：
 
 ```python
@@ -56,6 +62,8 @@ async for resp in check(timeout=60, default=False):
 
 - default: 超时时返回的默认值
 - timeout: 等待超时时间
+- retry: 重试次数，不设置则无限重试
+- prompt: 重试时发送的消息，若没有设置 `retry` 则不发送
 
 ### 便捷函数
 
@@ -86,15 +94,43 @@ async def _():
     async def check(event: Event):
         return event.get_plaintext()
 
-    async for resp in check(timeout=60):
+    resp = await check.wait(timeout=60)
+    if resp is None:
+        await test.send("等待超时")
+        return
+    if not resp.isdigit():
+        await test.send("无效输入")
+        return
+    await test.finish(f"你输入了{resp}")
+```
+
+等待用户输入数字，超时时间为 30 秒，只允许重试 5 次，此时 waits 接收所有来自当前用户的消息事件。
+
+```python
+from nonebot import on_command
+from nonebot.adapters import Event
+from nonebot_plugin_waiter import waiter
+
+test = on_command("test")
+
+@test.handle()
+async def _():
+    await test.send("请输入数字")
+
+    @waiter(waits=["message"], keep_session=True)
+    async def check(event: Event):
+        return event.get_plaintext()
+
+    async for resp in check(timeout=30, retry=5, prompt="输入错误，请输入数字。剩余次数：{count}"):
         if resp is None:
             await test.send("等待超时")
             break
         if not resp.isdigit():
-            await test.send("请输入数字")
             continue
         await test.send(f"你输入了{resp}")
         break
+    else:
+        await test.send("输入失败")
 ```
 
 在 telegram 适配器下等待用户点击按钮，超时时间为 30 秒，此时 waits 接收 telegram 的 CallbackQueryEvent 事件。

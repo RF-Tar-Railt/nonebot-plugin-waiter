@@ -17,7 +17,7 @@ from nonebot.internal.adapter import Bot, Event, Message, MessageSegment, Messag
 
 from .config import Config
 
-__version__ = "0.4.1"
+__version__ = "0.5.0"
 
 __plugin_meta__ = PluginMetadata(
     name="Waiter 插件",
@@ -48,25 +48,18 @@ class WaiterIterator(Generic[R, T]):
         waiter: Waiter[R],
         default: T,
         timeout: float = plugin_config.waiter_timeout,
-        count: int = plugin_config.waiter_count,
-        callback: Awaitable = None,
+        retry: int | None = None,
+        msg: Message | MessageTemplate = MessageTemplate(plugin_config.waiter_retry_prompt),
     ):
         self.waiter = waiter
         self.timeout = timeout
         self.default = default
-        self.count = count
-        self.callback = callback
+        self.retry = retry
+        self.msg = msg
+        self._next_count = 0
 
     def __aiter__(self) -> Self:
-        async def wrapper():
-            while True:
-                try:
-                    yield await self.__anext__()
-                    if self.count != 0:
-                        await self.callback(self.count)
-                except StopAsyncIteration:
-                    break
-        return wrapper()
+        return self
 
     @overload
     def __anext__(self: WaiterIterator[R1, None]) -> Awaitable[R1 | None]: ...
@@ -75,17 +68,26 @@ class WaiterIterator(Generic[R, T]):
     def __anext__(self: WaiterIterator[R1, T1]) -> Awaitable[R1 | T1]: ...
 
     def __anext__(self):  # type: ignore
-        # type: ignore
-        self.count -= 1
-        if self.count < 0:
-            raise StopAsyncIteration
-        return self.waiter.wait(default=self.default, timeout=self.timeout)
+        if self.retry is None:
+            return self.waiter.wait(default=self.default, timeout=self.timeout)
+        msg = None
+        if self._next_count > 0:
+            self.retry -= 1
+            if self.retry < 0:
+                raise StopAsyncIteration
+            if isinstance(self.msg, MessageTemplate):
+                msg = self.msg.format(count=f"{self.retry + 1}")
+            else:
+                msg = self.msg
+        try:
+            return self.waiter.wait(msg, default=self.default, timeout=self.timeout)
+        finally:
+            self._next_count += 1
 
 
 class Waiter(Generic[R]):
     future: asyncio.Future
     handler: _DependentCallable[R]
-    matcher: Matcher
 
     def __init__(
         self,
@@ -98,8 +100,7 @@ class Waiter(Generic[R]):
         if waits:
             event_types = tuple([e for e in waits if not isinstance(e, str)])
             event_str_types = tuple([e for e in waits if isinstance(e, str)])
-            self.event_type = event_str_types[0] if len(
-                event_str_types) == 1 else ""
+            self.event_type = event_str_types[0] if len(event_str_types) == 1 else ""
         else:
             event_types = ()
             event_str_types = (matcher.type,)
@@ -117,7 +118,7 @@ class Waiter(Generic[R]):
             if self.future.done():
                 matcher.skip()
             result = await _handler(
-                matcher=self,
+                matcher=matcher,
                 bot=bot,
                 event=event,
                 state=state,
@@ -128,70 +129,99 @@ class Waiter(Generic[R]):
                 await matcher.finish()
             matcher.skip()
 
-        wrapper.__annotations__ = {"matcher": Matcher,
-                                   "bot": Bot, "event": Event, "state": T_State}
+        wrapper.__annotations__ = {"matcher": Matcher, "bot": Bot, "event": Event, "state": T_State}
         self.handler = wrapper
         self.permission = permission
-        self.matcher = matcher
 
     def __aiter__(self) -> WaiterIterator[R, None]:
         return WaiterIterator(self, None)
 
     @overload
-    def __call__(self, *, default: T,
-                 timeout: float = 120) -> WaiterIterator[R, T]: ...
+    def __call__(self, *, default: T, timeout: float = 120) -> WaiterIterator[R, T]: ...
 
     @overload
     def __call__(self, *, timeout: float = 120) -> WaiterIterator[R, None]: ...
 
     @overload
     def __call__(
-        self, *, timeout: float = 120,
-        count: int = plugin_config.waiter_count,
-        msg: str = "输入错误,请重新输入 剩余次数{count}"
+        self,
+        *,
+        retry: int,
+        timeout: float = 120,
+        prompt: str | Message | MessageSegment | MessageTemplate = "",
     ) -> WaiterIterator[R, None]: ...
 
+    @overload
     def __call__(
-        self, *,
+        self,
+        *,
+        retry: int,
+        default: T,
+        timeout: float = 120,
+        prompt: str | Message | MessageSegment | MessageTemplate = "",
+    ) -> WaiterIterator[R, T]: ...
+
+    def __call__(
+        self,
+        *,
         default: T | None = None,
         timeout: float = plugin_config.waiter_timeout,
-        count: int = plugin_config.waiter_count,
-        msg: str = plugin_config.waiter_msg
+        retry: int | None = None,
+        prompt: str | Message | MessageSegment | MessageTemplate = plugin_config.waiter_retry_prompt,
     ) -> WaiterIterator[R, T] | WaiterIterator[R, None]:
-        """等待用户输入并返回结果
+        """循环等待用户输入并返回结果，可以设置重试次数来限制循环次数
 
         参数:
             default: 超时时返回的默认值
             timeout: 等待超时时间
-            count:   重试次数
-            msg:     重试的提示消息
+            retry:   重试次数
+            prompt:  重试的提示消息
         """
-        async def callback(count: int):
-            await self.matcher.send(msg.format(count=count))
+        if isinstance(prompt, str):
+            msg = MessageTemplate(prompt)
+        elif isinstance(prompt, MessageSegment):
+            msg = prompt.get_message_class()(prompt)
+        else:
+            msg = prompt
 
-        # type: ignore
-        return WaiterIterator(self, default, timeout, count, callback)
-
-    @overload
-    async def wait(self, *, default: R | T,
-                   timeout: float = plugin_config.waiter_timeout) -> R | T: ...
+        return WaiterIterator(self, default, timeout, retry, msg)  # type: ignore
 
     @overload
     async def wait(
-        self, *, timeout: float = plugin_config.waiter_timeout) -> R | None: ...
+        self,
+        before: str | Message | MessageSegment | MessageTemplate | None = None,
+        *,
+        default: R | T,
+        timeout: float = plugin_config.waiter_timeout,
+    ) -> R | T: ...
+
+    @overload
+    async def wait(
+        self,
+        before: str | Message | MessageSegment | MessageTemplate | None = None,
+        *,
+        timeout: float = plugin_config.waiter_timeout,
+    ) -> R | None: ...
 
     async def wait(
-        self, *, default: R | T | None = None, timeout: float = plugin_config.waiter_timeout
+        self,
+        before: str | Message | MessageSegment | MessageTemplate | None = None,
+        *,
+        default: R | T | None = None,
+        timeout: float = plugin_config.waiter_timeout,
     ) -> R | T | None:
         """等待用户输入并返回结果
 
         参数:
+            before: 等待前发送的消息
             default: 超时时返回的默认值
             timeout: 等待超时时间
         """
         matcher = on(
             type=self.event_type, permission=self.permission, priority=0, block=False, handlers=[self.handler]
         )
+        if before:
+            await matcher.send(before)
         try:
             return await asyncio.wait_for(self.future, timeout)
         except asyncio.TimeoutError:
@@ -235,8 +265,7 @@ def waiter(
         except LookupError:
             permission = None
         else:
-            permission = Permission(User.from_event(
-                event, perm=matcher.permission))
+            permission = Permission(User.from_event(event, perm=matcher.permission))
 
     def wrapper(func: _DependentCallable[R]):
         return Waiter(waits, func, matcher, parameterless, permission)
@@ -253,16 +282,10 @@ async def prompt(
         message: 提示消息
         timeout: 等待超时时间
     """
-    try:
-        matcher = current_matcher.get()
-    except LookupError:
-        raise RuntimeError("No matcher found.")
-
-    await matcher.send(message)
 
     async def wrapper(event: Event):
         return event.get_message()
 
     wrapper.__annotations__ = {"event": Event}
 
-    return await waiter(["message"], matcher=matcher, keep_session=True)(wrapper).wait(timeout=timeout)
+    return await waiter(["message"], keep_session=True)(wrapper).wait(message, timeout=timeout)
