@@ -18,7 +18,7 @@ from nonebot.internal.adapter import Bot, Event, Message, MessageSegment, Messag
 
 from .config import Config
 
-__version__ = "0.6.0"
+__version__ = "0.6.1"
 
 __plugin_meta__ = PluginMetadata(
     name="Waiter 插件",
@@ -304,6 +304,7 @@ async def prompt(
 
     参数:
         message: 提示消息
+        handler: 处理函数
         timeout: 等待超时时间
     返回值:
         符合条件的用户输入
@@ -335,9 +336,9 @@ async def prompt_until(
     checker: Callable[[Message], bool],
     *,
     matcher: type[Matcher] | Matcher | None = None,
+    finish: bool = False,
     timeout: float = plugin_config.waiter_timeout,
     retry: int = 5,
-    finish: bool = False,
     retry_prompt: str | Message | MessageSegment | MessageTemplate = plugin_config.waiter_retry_prompt,
     timeout_prompt: str | Message | MessageSegment | MessageTemplate = plugin_config.waiter_timeout_prompt,
     limited_prompt: str | Message | MessageSegment | MessageTemplate = plugin_config.waiter_limited_prompt,
@@ -351,9 +352,9 @@ async def prompt_until(
     handler: _DependentCallable[R],
     *,
     matcher: type[Matcher] | Matcher | None = None,
+    finish: bool = False,
     timeout: float = plugin_config.waiter_timeout,
     retry: int = 5,
-    finish: bool = False,
     retry_prompt: str | Message | MessageSegment | MessageTemplate = plugin_config.waiter_retry_prompt,
     timeout_prompt: str | Message | MessageSegment | MessageTemplate = plugin_config.waiter_timeout_prompt,
     limited_prompt: str | Message | MessageSegment | MessageTemplate = plugin_config.waiter_limited_prompt,
@@ -366,9 +367,9 @@ async def prompt_until(
     handler: _DependentCallable[R] | None = None,
     *,
     matcher: type[Matcher] | Matcher | None = None,
+    finish: bool = False,
     timeout: float = plugin_config.waiter_timeout,
     retry: int = 5,
-    finish: bool = False,
     retry_prompt: str | Message | MessageSegment | MessageTemplate = plugin_config.waiter_retry_prompt,
     timeout_prompt: str | Message | MessageSegment | MessageTemplate = plugin_config.waiter_timeout_prompt,
     limited_prompt: str | Message | MessageSegment | MessageTemplate = plugin_config.waiter_limited_prompt,
@@ -376,15 +377,16 @@ async def prompt_until(
     """等待用户输入并返回结果
 
     参数:
-        before: 提示消息
+        message: 提示消息
+        checker: 检查函数
+        handler: 处理函数
         matcher: 匹配器
+        finish: 超时或重试过多时是否结束会话
         timeout: 等待超时时间
         retry: 重试次数
         retry_prompt: 重试时的提示信息
         timeout_prompt: 等待超时时的提示信息
         limited_prompt: 重试次数用尽时的提示信息
-        rule: 验证输入的规则
-        finish: 超时或重试过多时是结束
     返回值:
         符合条件的用户输入
     """
