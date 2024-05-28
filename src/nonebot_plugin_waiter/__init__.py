@@ -337,6 +337,7 @@ async def prompt_until(
     matcher: type[Matcher] | Matcher | None = None,
     timeout: float = plugin_config.waiter_timeout,
     retry: int = 5,
+    finish: bool = False,
     retry_prompt: str | Message | MessageSegment | MessageTemplate = plugin_config.waiter_retry_prompt,
     timeout_prompt: str | Message | MessageSegment | MessageTemplate = plugin_config.waiter_timeout_prompt,
     limited_prompt: str | Message | MessageSegment | MessageTemplate = plugin_config.waiter_limited_prompt,
@@ -352,6 +353,7 @@ async def prompt_until(
     matcher: type[Matcher] | Matcher | None = None,
     timeout: float = plugin_config.waiter_timeout,
     retry: int = 5,
+    finish: bool = False,
     retry_prompt: str | Message | MessageSegment | MessageTemplate = plugin_config.waiter_retry_prompt,
     timeout_prompt: str | Message | MessageSegment | MessageTemplate = plugin_config.waiter_timeout_prompt,
     limited_prompt: str | Message | MessageSegment | MessageTemplate = plugin_config.waiter_limited_prompt,
@@ -366,6 +368,7 @@ async def prompt_until(
     matcher: type[Matcher] | Matcher | None = None,
     timeout: float = plugin_config.waiter_timeout,
     retry: int = 5,
+    finish: bool = False,
     retry_prompt: str | Message | MessageSegment | MessageTemplate = plugin_config.waiter_retry_prompt,
     timeout_prompt: str | Message | MessageSegment | MessageTemplate = plugin_config.waiter_timeout_prompt,
     limited_prompt: str | Message | MessageSegment | MessageTemplate = plugin_config.waiter_limited_prompt,
@@ -381,6 +384,7 @@ async def prompt_until(
         timeout_prompt: 等待超时时的提示信息
         limited_prompt: 重试次数用尽时的提示信息
         rule: 验证输入的规则
+        finish: 超时或重试过多时是结束
     返回值:
         符合条件的用户输入
     """
@@ -404,13 +408,19 @@ async def prompt_until(
 
     async for data in wait(timeout=timeout, retry=retry, prompt=retry_prompt):
         if data is None:
-            await matcher.send(timeout_prompt)
+            if finish:
+                await matcher.finish(timeout_prompt)
+            else:
+                await matcher.send(timeout_prompt)
             return
         if not checker(data):
             continue
         return data  # type: ignore
     else:
-        await matcher.send(limited_prompt)
+        if finish:
+            await matcher.finish(limited_prompt)
+        else:
+            await matcher.send(limited_prompt)
 
 
 async def suggest(
