@@ -18,7 +18,7 @@ from nonebot.internal.adapter import Bot, Event, Message, MessageSegment, Messag
 
 from .config import Config
 
-__version__ = "0.6.1"
+__version__ = "0.6.2"
 
 __plugin_meta__ = PluginMetadata(
     name="Waiter 插件",
@@ -97,6 +97,7 @@ class Waiter(Generic[R]):
         matcher: type[Matcher] | Matcher,
         parameterless: Iterable[Any] | None = None,
         permission: Permission | None = None,
+        block: bool = True,
     ):
         if waits:
             event_types = tuple([e for e in waits if not isinstance(e, str)])
@@ -131,7 +132,8 @@ class Waiter(Generic[R]):
             )
             if result is not None and not self.future.done():
                 self.future.set_result(result)
-                matcher.stop_propagation()
+                if block:
+                    matcher.stop_propagation()
                 await matcher.finish()
             matcher.skip()
 
@@ -244,6 +246,7 @@ def waiter(
     matcher: type[Matcher] | Matcher | None = None,
     parameterless: Iterable[Any] | None = None,
     keep_session: bool = False,
+    block: bool = True,
 ) -> Callable[[_DependentCallable[R]], Waiter[R]]:
     """装饰一个函数来创建一个 `Waiter` 对象用以等待用户输入
 
@@ -255,6 +258,7 @@ def waiter(
         matcher: 所属的 `Matcher` 对象，如果不指定则使用当前上下文的 `Matcher`
         parameterless: 非参数类型依赖列表
         keep_session: 是否保持会话，即仅允许会话发起者响应
+        block: waiter 成功响应后是否阻塞事件传递，默认为 `True`
     """
     if not matcher:
         try:
@@ -273,7 +277,7 @@ def waiter(
             permission = Permission(User.from_event(event, perm=matcher.permission))
 
     def wrapper(func: _DependentCallable[R]):
-        return Waiter(waits, func, matcher, parameterless, permission)
+        return Waiter(waits, func, matcher, parameterless, permission, block)
 
     return wrapper
 
