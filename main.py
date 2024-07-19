@@ -1,4 +1,5 @@
 from nonebot import on_command
+from nonebot.rule import to_me
 from nonebot.adapters import Event
 
 from nonebot_plugin_waiter import waiter
@@ -10,7 +11,7 @@ test = on_command("test")
 async def _(event: Event):
     await test.send("请输入数字")
 
-    @waiter(waits=["message"])
+    @waiter(waits=["message"], rule=to_me())
     async def check(event1: Event):
         if event.get_session_id() == event1.get_session_id():
             return event1.get_plaintext()

@@ -36,6 +36,8 @@ async def check(event: Event):
 - matcher: 所属的 `Matcher` 对象，如果不指定则使用当前上下文的 `Matcher`
 - parameterless: 非参数类型依赖列表
 - keep_session: 是否保持会话，即仅允许会话发起者响应
+- rule: 事件响应规则，例如 `to_me()`
+- block: waiter 成功响应后是否阻塞事件传递，默认为 `True`
 
 ### 等待
 
