@@ -27,6 +27,8 @@ async def check(event: Event):
 
 `waiter` 装饰一个函数来创建一个 `Waiter` 对象用以等待预期事件
 
+**该函数可以使用依赖注入**
+
 函数内需要自行判断输入事件是否符合预期并返回结果
 
 `waiter` 有如下参数：
@@ -74,7 +76,7 @@ async for resp in check(timeout=60, default=False):
 ```python
 from nonebot_plugin_waiter import prompt
 
-resp = await prompt("", timeout=60)
+resp = await prompt("请输入XXX", timeout=60)
 ```
 
 相应的，同时提供了一个 `prompt_until` 函数用于可重试一定次数地等待用户输入。
@@ -96,7 +98,7 @@ resp = await prompt_until(
 ```python
 from nonebot_plugin_waiter import suggest
 
-resp = await suggest("xxx", ["a", "b", "c", "d"])
+resp = await suggest("请选择xxx", ["a", "b", "c", "d"])
 ```
 
 ## 示例
@@ -106,7 +108,7 @@ resp = await suggest("xxx", ["a", "b", "c", "d"])
 ```python
 from nonebot import on_command
 from nonebot.adapters import Event
-from nonebot_plugin_waiter import waiter
+from nonebot_plugin_waiter import waiter, prompt
 
 test = on_command("test")
 
@@ -119,6 +121,8 @@ async def _():
         return event.get_plaintext()
 
     resp = await check.wait(timeout=60)
+    # 上面的代码等价于下面的代码
+    # resp = await prompt("请输入数字", timeout=60)
     if resp is None:
         await test.send("等待超时")
         return
@@ -207,4 +211,47 @@ async def _(bot: Bot, event: MessageEvent):
         )
         await bot.answer_callback_query(_id, text="Hello CallbackQuery!")
     await inline.finish()
+```
+
+配合 [`nonebot-plugin-session`](https://github.com/noneplugin/nonebot-plugin-session) 插件使用，实现在群内的多轮会话游戏：
+
+```python
+from nonebot import on_command
+from nonebot.adapters import Event
+from nonebot_plugin_waiter import waiter
+from nonebot_plugin_session import EventSession, SessionIdType
+
+game = on_command("game")
+
+@game.handle()
+async def main(event: Event, session: EventSession):
+    session_id = session.get_id(SessionIdType.GROUP)
+    gm = Game(event.get_user_id(), session_id)
+    if gm.already_start():
+        await game.finish("游戏已经开始了, 请不要重复开始")
+    gm.start()
+    await game.send(f"开始游戏\n输入 “取消” 结束游戏")
+
+    @waiter(waits=["message"], block=False)
+    async def listen(_event: Event, _session: EventSession):
+        if _session.get_id(SessionIdType.GROUP) != session_id:
+            return
+        text = _event.get_message().extract_plain_text()
+        if text == "取消":
+            return False
+        return await gm.handle(text)
+
+    async for resp in listen(timeout=60):
+        if resp is False:
+            await game.finish("游戏已取消")
+            gm.finish()
+            break
+        if resp is None:
+            await game.finish("游戏已超时, 请重新开始")
+            gm.finish()
+            break
+        await game.send(resp)
+        if gm.is_finish():
+            await game.finish("游戏结束")
+            break
 ```
