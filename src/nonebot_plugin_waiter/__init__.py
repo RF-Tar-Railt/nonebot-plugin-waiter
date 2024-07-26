@@ -9,11 +9,11 @@ from nonebot.plugin.on import on
 from nonebot.matcher import Matcher
 from nonebot import get_plugin_config
 from nonebot.internal.rule import Rule
-from nonebot.plugin import PluginMetadata
 from nonebot.dependencies import Dependent
 from nonebot.internal.permission import User, Permission
 from nonebot.utils import run_sync, is_coroutine_callable
 from nonebot.internal.matcher import current_event, current_matcher
+from nonebot.plugin import PluginMetadata, get_plugin_by_module_name
 from nonebot.typing import T_State, T_RuleChecker, _DependentCallable
 from nonebot.internal.adapter import Bot, Event, Message, MessageSegment, MessageTemplate
 
@@ -42,6 +42,15 @@ R = TypeVar("R")
 R1 = TypeVar("R1")
 T = TypeVar("T")
 T1 = TypeVar("T1")
+
+
+if get_plugin_by_module_name("nonebot.plugins.single_session"):
+    raise RuntimeError(
+        "built-in plugin `single_session` is enabled,"
+        " which will cause prospective problems for this plugin `waiter`\n"
+        "As a conclusion, either you uninstall plugin `single_session`, "
+        "or you can't use plugin `waiter` at all"
+    )
 
 
 class WaiterIterator(Generic[R, T]):
@@ -259,7 +268,7 @@ def waiter(
 ) -> Callable[[_DependentCallable[R]], Waiter[R]]:
     """装饰一个函数来创建一个 `Waiter` 对象用以等待用户输入
 
-    函数内需要自行判断输入是否符合预期并返回结果
+    函数内需要自行判断输入事件是否符合预期并返回相应结果以供外层 handler 继续处理
 
     Args:
         waits: 等待的事件类型列表，可以是 `Event` 的类型或事件的 `get_type()` 返回值；
