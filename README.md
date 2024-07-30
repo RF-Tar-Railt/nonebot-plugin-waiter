@@ -101,6 +101,12 @@ from nonebot_plugin_waiter import suggest
 resp = await suggest("请选择xxx", ["a", "b", "c", "d"])
 ```
 
+`suggest_not_in` 函数用于等待候选项以外的用户输入
+
+```python
+resp = await suggest_not_in("XX已存在，请输入新的XX", not_expect=["a", "b", "c", "d"])
+```
+
 ## 示例
 
 等待用户输入数字，超时时间为 60 秒，此时 waits 接收所有来自当前用户的消息事件。
