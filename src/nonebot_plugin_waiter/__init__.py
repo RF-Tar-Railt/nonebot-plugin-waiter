@@ -506,6 +506,7 @@ async def suggest(
         rule=rule,
     )
 
+
 async def suggest_not_in(
     message: str | Message | MessageSegment | MessageTemplate,
     not_expect: list[str],
