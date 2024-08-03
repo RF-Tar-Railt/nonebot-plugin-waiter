@@ -505,3 +505,51 @@ async def suggest(
         limited_prompt=limited_prompt,
         rule=rule,
     )
+
+
+async def suggest_not_in(
+    message: str | Message | MessageSegment | MessageTemplate,
+    not_expect: list[str],
+    timeout: float = plugin_config.waiter_timeout,
+    retry: int = 5,
+    retry_prompt: str | Message | MessageSegment | MessageTemplate = plugin_config.waiter_retry_prompt,
+    timeout_prompt: str | Message | MessageSegment | MessageTemplate = plugin_config.waiter_timeout_prompt,
+    limited_prompt: str | Message | MessageSegment | MessageTemplate = plugin_config.waiter_limited_prompt,
+):
+    """等待用户输入非候选项并返回结果
+
+    参数:
+        message: 提示消息
+        not_expect: 非候选项列表
+        timeout: 等待超时时间
+        retry: 重试次数
+        retry_prompt: 重试时的提示信息
+        timeout_prompt: 等待超时时的提示信息
+        limited_prompt: 重试次数用尽时的提示信息
+    返回值:
+        符合条件的用户输入
+    """
+    try:
+        matcher = current_matcher.get()
+    except LookupError:
+        raise RuntimeError("No matcher found.")
+
+    if isinstance(message, MessageTemplate):
+        _message = message.format(**matcher.state)
+    else:
+        _message = message
+
+    _message += "\n" + plugin_config.waiter_suggest_sep.join(
+        [plugin_config.waiter_suggest_hint.format(suggest=s) for s in not_expect]
+    )
+
+    return await prompt_until(
+        _message,
+        lambda msg: msg.extract_plain_text() not in not_expect,
+        matcher=matcher,
+        timeout=timeout,
+        retry=retry,
+        retry_prompt=retry_prompt,
+        timeout_prompt=timeout_prompt,
+        limited_prompt=limited_prompt,
+    )
