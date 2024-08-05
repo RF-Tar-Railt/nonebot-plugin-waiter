@@ -93,18 +93,18 @@ resp = await prompt_until(
 )
 ```
 
-基于此，还有一个 `suggest_in` 函数，用于向用户展示候选项并等待输入。
+基于此，还有一个 `suggest` 函数，用于向用户展示候选项并等待输入。
 
 ```python
-from nonebot_plugin_waiter import suggest_in
+from nonebot_plugin_waiter import suggest
 
-resp = await suggest_in("请选择xxx", ["a", "b", "c", "d"])
+resp = await suggest("请选择xxx", ["a", "b", "c", "d"])
 ```
 
-`suggest_not_in` 函数用于等待候选项以外的用户输入
+`suggest_not` 函数用于等待候选项以外的用户输入
 
 ```python
-resp = await suggest_not_in("XX已存在，请输入新的XX", not_expect=["a", "b", "c", "d"])
+resp = await suggest_not("XX已存在，请输入新的XX", not_expect=["a", "b", "c", "d"])
 
 >>> XX已存在，请输入新的XX
     以下为非候选项
@@ -126,7 +126,7 @@ resp = await suggest_not_in("XX已存在，请输入新的XX", not_expect=["a", 
 | waiter_limited_prompt | 否 | 重试次数已用完，输入失败。 | 默认重试次数用完时的提示信息
 | waiter_suggest_hint | 否 | - {suggest} | 默认建议信息的提示
 | waiter_suggest_sep | 否 | \n | 默认建议信息的分隔符
-| waiter_suggest_not_in_hint | 否 | 以下为非候选项 | 默认非候选项前的提示信息
+| waiter_suggest_not_hint | 否 | 以下为非候选项 | 默认非候选项前的提示信息
 
 ## 示例
 

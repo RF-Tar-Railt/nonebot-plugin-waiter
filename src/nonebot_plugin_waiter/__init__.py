@@ -456,7 +456,7 @@ async def prompt_until(
             await matcher.send(limited_prompt)
 
 
-async def suggest_(
+async def _suggest(
     message: str | Message | MessageSegment | MessageTemplate,
     check_list: list[str],
     use_not_expect: bool,
@@ -518,7 +518,7 @@ async def suggest_(
     )
 
 
-async def suggest_in(
+async def suggest(
     message: str | Message | MessageSegment | MessageTemplate,
     expect: list[str],
     timeout: float = plugin_config.waiter_timeout,
@@ -543,7 +543,7 @@ async def suggest_in(
         符合条件的用户输入
     """
 
-    return await suggest_(
+    return await _suggest(
         message,
         expect,
         use_not_expect=False,
@@ -556,7 +556,7 @@ async def suggest_in(
     )
 
 
-async def suggest_not_in(
+async def suggest_not(
     message: str | Message | MessageSegment | MessageTemplate,
     not_expect: list[str],
     timeout: float = plugin_config.waiter_timeout,
@@ -579,7 +579,7 @@ async def suggest_not_in(
         符合条件的用户输入
     """
 
-    return await suggest_(
+    return await _suggest(
         message,
         not_expect,
         use_not_expect=True,
