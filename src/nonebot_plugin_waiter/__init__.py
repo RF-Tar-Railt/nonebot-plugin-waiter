@@ -1,21 +1,21 @@
 from __future__ import annotations
 
 import asyncio
-from typing_extensions import Self
-from collections.abc import Iterable, Awaitable
-from typing import Any, Generic, TypeVar, Callable, cast, overload
+from collections.abc import Awaitable, Iterable
+from typing import Any, Callable, Generic, TypeVar, cast, overload
 
-from nonebot.plugin.on import on
-from nonebot.matcher import Matcher
 from nonebot import get_plugin_config
-from nonebot.internal.rule import Rule
 from nonebot.dependencies import Dependent
-from nonebot.internal.permission import User, Permission
-from nonebot.utils import run_sync, is_coroutine_callable
-from nonebot.internal.matcher import current_event, current_matcher
-from nonebot.plugin import PluginMetadata, get_plugin_by_module_name
-from nonebot.typing import T_State, T_RuleChecker, _DependentCallable
 from nonebot.internal.adapter import Bot, Event, Message, MessageSegment, MessageTemplate
+from nonebot.internal.matcher import current_event, current_matcher
+from nonebot.internal.permission import Permission, User
+from nonebot.internal.rule import Rule
+from nonebot.matcher import Matcher
+from nonebot.plugin import PluginMetadata, get_plugin_by_module_name
+from nonebot.plugin.on import on
+from nonebot.typing import T_RuleChecker, T_State, _DependentCallable
+from nonebot.utils import is_coroutine_callable, run_sync
+from typing_extensions import Self
 
 from .config import Config
 
@@ -456,7 +456,69 @@ async def prompt_until(
             await matcher.send(limited_prompt)
 
 
-async def suggest(
+async def suggest_(
+    message: str | Message | MessageSegment | MessageTemplate,
+    check_list: list[str],
+    use_not_expect: bool,
+    timeout: float = plugin_config.waiter_timeout,
+    retry: int = 5,
+    retry_prompt: str | Message | MessageSegment | MessageTemplate = plugin_config.waiter_retry_prompt,
+    timeout_prompt: str | Message | MessageSegment | MessageTemplate = plugin_config.waiter_timeout_prompt,
+    limited_prompt: str | Message | MessageSegment | MessageTemplate = plugin_config.waiter_limited_prompt,
+    rule: T_RuleChecker | Rule | None = None,
+):
+    """等待用户输入, 检查是否符合选项，并返回结果
+
+    参数:
+        message: 提示消息
+        check_list: 需检查的选项列表
+        use_not_expect: 是否使用非候选项模式
+        timeout: 等待超时时间
+        retry: 重试次数
+        retry_prompt: 重试时的提示信息
+        timeout_prompt: 等待超时时的提示信息
+        limited_prompt: 重试次数用尽时的提示信息
+        rule: 事件响应规则
+    返回值:
+        符合条件的用户输入
+    """
+    try:
+        matcher = current_matcher.get()
+    except LookupError:
+        raise RuntimeError("No matcher found.")
+
+    if isinstance(message, MessageTemplate):
+        _message = message.format(**matcher.state)
+    else:
+        _message = message
+
+    if use_not_expect:
+        _message += "\n" + plugin_config.waiter_suggest_not_in_hint
+
+    _message += "\n" + plugin_config.waiter_suggest_sep.join(
+        [plugin_config.waiter_suggest_hint.format(suggest=s) for s in check_list]
+    )
+
+    _checker = (
+        lambda msg: msg.extract_plain_text() not in check_list
+        if use_not_expect
+        else msg.extract_plain_text() in check_list
+    )
+
+    return await prompt_until(
+        _message,
+        _checker,
+        matcher=matcher,
+        timeout=timeout,
+        retry=retry,
+        retry_prompt=retry_prompt,
+        timeout_prompt=timeout_prompt,
+        limited_prompt=limited_prompt,
+        rule=rule,
+    )
+
+
+async def suggest_in(
     message: str | Message | MessageSegment | MessageTemplate,
     expect: list[str],
     timeout: float = plugin_config.waiter_timeout,
@@ -480,24 +542,11 @@ async def suggest(
     返回值:
         符合条件的用户输入
     """
-    try:
-        matcher = current_matcher.get()
-    except LookupError:
-        raise RuntimeError("No matcher found.")
 
-    if isinstance(message, MessageTemplate):
-        _message = message.format(**matcher.state)
-    else:
-        _message = message
-
-    _message += "\n" + plugin_config.waiter_suggest_sep.join(
-        [plugin_config.waiter_suggest_hint.format(suggest=s) for s in expect]
-    )
-
-    return await prompt_until(
-        _message,
-        lambda msg: msg.extract_plain_text() in expect,
-        matcher=matcher,
+    return await suggest_(
+        message,
+        expect,
+        use_not_expect=False,
         timeout=timeout,
         retry=retry,
         retry_prompt=retry_prompt,
@@ -529,24 +578,11 @@ async def suggest_not_in(
     返回值:
         符合条件的用户输入
     """
-    try:
-        matcher = current_matcher.get()
-    except LookupError:
-        raise RuntimeError("No matcher found.")
 
-    if isinstance(message, MessageTemplate):
-        _message = message.format(**matcher.state)
-    else:
-        _message = message
-
-    _message += "\n" + plugin_config.waiter_suggest_sep.join(
-        [plugin_config.waiter_suggest_hint.format(suggest=s) for s in not_expect]
-    )
-
-    return await prompt_until(
-        _message,
-        lambda msg: msg.extract_plain_text() not in not_expect,
-        matcher=matcher,
+    return await suggest_(
+        message,
+        not_expect,
+        use_not_expect=True,
         timeout=timeout,
         retry=retry,
         retry_prompt=retry_prompt,
