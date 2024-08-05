@@ -1,21 +1,21 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable, Iterable
-from typing import Any, Callable, Generic, TypeVar, cast, overload
-
-from nonebot import get_plugin_config
-from nonebot.dependencies import Dependent
-from nonebot.internal.adapter import Bot, Event, Message, MessageSegment, MessageTemplate
-from nonebot.internal.matcher import current_event, current_matcher
-from nonebot.internal.permission import Permission, User
-from nonebot.internal.rule import Rule
-from nonebot.matcher import Matcher
-from nonebot.plugin import PluginMetadata, get_plugin_by_module_name
-from nonebot.plugin.on import on
-from nonebot.typing import T_RuleChecker, T_State, _DependentCallable
-from nonebot.utils import is_coroutine_callable, run_sync
 from typing_extensions import Self
+from collections.abc import Iterable, Awaitable
+from typing import Any, Generic, TypeVar, Callable, cast, overload
+
+from nonebot.plugin.on import on
+from nonebot.matcher import Matcher
+from nonebot import get_plugin_config
+from nonebot.internal.rule import Rule
+from nonebot.dependencies import Dependent
+from nonebot.internal.permission import User, Permission
+from nonebot.utils import run_sync, is_coroutine_callable
+from nonebot.internal.matcher import current_event, current_matcher
+from nonebot.plugin import PluginMetadata, get_plugin_by_module_name
+from nonebot.typing import T_State, T_RuleChecker, _DependentCallable
+from nonebot.internal.adapter import Bot, Event, Message, MessageSegment, MessageTemplate
 
 from .config import Config
 
@@ -499,8 +499,8 @@ async def suggest_(
         [plugin_config.waiter_suggest_hint.format(suggest=s) for s in check_list]
     )
 
-    _checker = (
-        lambda msg: msg.extract_plain_text() not in check_list
+    _checker = lambda msg: (
+        msg.extract_plain_text() not in check_list
         if use_not_expect
         else msg.extract_plain_text() in check_list
     )
