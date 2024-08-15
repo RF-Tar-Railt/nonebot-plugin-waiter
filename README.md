@@ -101,11 +101,32 @@ from nonebot_plugin_waiter import suggest
 resp = await suggest("请选择xxx", ["a", "b", "c", "d"])
 ```
 
-`suggest_not_in` 函数用于等待候选项以外的用户输入
+`suggest_not` 函数用于等待候选项以外的用户输入
 
 ```python
-resp = await suggest_not_in("XX已存在，请输入新的XX", not_expect=["a", "b", "c", "d"])
+resp = await suggest_not("XX已存在，请输入新的XX", not_expect=["a", "b", "c", "d"])
+
+>>> XX已存在，请输入新的XX
+    以下为非候选项
+    - a
+    - b
+    - c
+    - d
 ```
+
+## 配置
+
+建议阅读源码来确定各配置项生效的位置
+
+| 配置项 | 必填 | 默认值 | 说明 |
+|:-----:|:----:|:----:|:----:|
+| waiter_timeout | 否 | 120 | 默认等待超时时间 |
+| waiter_retry_prompt | 否 | 输入错误，请重新输入。剩余次数：{count} | 默认重试时的提示信息 |
+| waiter_timeout_prompt | 否 | 等待超时。 | 默认超时时的提示信息 |
+| waiter_limited_prompt | 否 | 重试次数已用完，输入失败。 | 默认重试次数用完时的提示信息
+| waiter_suggest_hint | 否 | - {suggest} | 默认建议信息的提示
+| waiter_suggest_sep | 否 | \n | 默认建议信息的分隔符
+| waiter_suggest_not_hint | 否 | 以下为非候选项 | 默认非候选项前的提示信息
 
 ## 示例
 

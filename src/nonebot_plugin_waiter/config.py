@@ -21,3 +21,6 @@ class Config(BaseModel):
 
     waiter_suggest_sep: str = Field("\n")
     """默认建议信息的分隔符"""
+
+    waiter_suggest_not_in_hint: str = Field("以下为非候选项")
+    """默认非候选项前的提示信息"""
