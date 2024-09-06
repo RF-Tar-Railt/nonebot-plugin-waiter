@@ -12,6 +12,10 @@ requires-python = ">=3.9"
 readme = "README.md"
 license = {text = "MIT"}
 
+[project.optional-dependencies]
+unimsg = [
+    "nonebot-plugin-alconna>=0.52.2",
+]
 [build-system]
 requires = ["pdm-backend"]
 build-backend = "pdm.backend"

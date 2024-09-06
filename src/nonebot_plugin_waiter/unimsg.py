@@ -3,38 +3,30 @@ from __future__ import annotations
 import asyncio
 from typing_extensions import Self
 from collections.abc import Iterable, Awaitable
-from typing import Any, Generic, TypeVar, Callable, cast, overload
+from typing import Any, Union, Generic, TypeVar, Callable, cast, overload
 
 from nonebot.plugin.on import on
 from nonebot.matcher import Matcher
-from nonebot import get_plugin_config
 from nonebot.internal.rule import Rule
 from nonebot.dependencies import Dependent
+from nonebot import require, get_plugin_config
+from nonebot.internal.adapter import Bot, Event
 from nonebot.internal.permission import User, Permission
 from nonebot.utils import run_sync, is_coroutine_callable
 from nonebot.internal.matcher import current_event, current_matcher
-from nonebot.plugin import PluginMetadata, get_plugin_by_module_name
 from nonebot.typing import T_State, T_RuleChecker, _DependentCallable
-from nonebot.internal.adapter import Bot, Event, Message, MessageSegment, MessageTemplate
+
+require("nonebot_plugin_alconna")
+
+from nonebot_plugin_alconna.uniseg import UniMsg, Segment, UniMessage
+from nonebot_plugin_alconna.uniseg.template import UniMessageTemplate
+
+_M = Union[str, Segment, UniMessage, UniMessageTemplate]
+
 
 from .config import Config
 
 __version__ = "0.7.0"
-
-__plugin_meta__ = PluginMetadata(
-    name="Waiter 插件",
-    description="提供一个 got-and-reject 会话控制的替代方案，可自由控制超时时间",
-    usage="@waiter(waits: list[type[Event] | str], matcher: type[Matcher] | Matcher, parameterless: Iterable[Any] | None, keep_session: bool = False)",  # noqa: E501
-    homepage="https://github.com/RF-Tar-Railt/nonebot-plugin-waiter",
-    type="library",
-    config=Config,
-    supported_adapters=None,
-    extra={
-        "author": "RF-Tar-Railt",
-        "priority": 1,
-        "version": __version__,
-    },
-)
 
 plugin_config = get_plugin_config(Config)
 
@@ -44,13 +36,13 @@ T = TypeVar("T")
 T1 = TypeVar("T1")
 
 
-if get_plugin_by_module_name("nonebot.plugins.single_session"):
-    raise RuntimeError(
-        "built-in plugin `single_session` is enabled,"
-        " which will cause prospective problems for this plugin `waiter`\n"
-        "As a conclusion, either you uninstall plugin `single_session`, "
-        "or you can't use plugin `waiter` at all"
-    )
+def _norm(message: _M, state: T_State) -> UniMessage:
+    if isinstance(message, UniMessageTemplate):
+        return message.format(**state)
+    elif isinstance(message, (str, Segment)):
+        return UniMessage(message)
+    else:
+        return message
 
 
 class WaiterIterator(Generic[R, T]):
@@ -60,7 +52,7 @@ class WaiterIterator(Generic[R, T]):
         default: T,
         timeout: float = plugin_config.waiter_timeout,
         retry: int | None = None,
-        msg: Message | MessageTemplate = MessageTemplate(plugin_config.waiter_retry_prompt),
+        msg: UniMessage | UniMessageTemplate = UniMessage.template(plugin_config.waiter_retry_prompt),
     ):
         self.waiter = waiter
         self.timeout = timeout
@@ -86,7 +78,7 @@ class WaiterIterator(Generic[R, T]):
             self.retry -= 1
             if self.retry < 0:
                 raise StopAsyncIteration
-            if isinstance(self.msg, MessageTemplate):
+            if isinstance(self.msg, UniMessageTemplate):
                 msg = self.msg.format(count=f"{self.retry + 1}")
             else:
                 msg = self.msg
@@ -168,7 +160,7 @@ class Waiter(Generic[R]):
         *,
         retry: int,
         timeout: float = 120,
-        prompt: str | Message | MessageSegment | MessageTemplate = "",
+        prompt: _M = "",
     ) -> WaiterIterator[R, None]: ...
 
     @overload
@@ -178,7 +170,7 @@ class Waiter(Generic[R]):
         retry: int,
         default: T,
         timeout: float = 120,
-        prompt: str | Message | MessageSegment | MessageTemplate = "",
+        prompt: _M = "",
     ) -> WaiterIterator[R, T]: ...
 
     def __call__(
@@ -187,7 +179,7 @@ class Waiter(Generic[R]):
         default: T | None = None,
         timeout: float = plugin_config.waiter_timeout,
         retry: int | None = None,
-        prompt: str | Message | MessageSegment | MessageTemplate = plugin_config.waiter_retry_prompt,
+        prompt: _M = plugin_config.waiter_retry_prompt,
     ) -> WaiterIterator[R, T] | WaiterIterator[R, None]:
         """循环等待用户输入并返回结果，可以设置重试次数来限制循环次数
 
@@ -198,9 +190,9 @@ class Waiter(Generic[R]):
             prompt:  重试的提示消息
         """
         if isinstance(prompt, str):
-            msg = MessageTemplate(prompt)
-        elif isinstance(prompt, MessageSegment):
-            msg = prompt.get_message_class()(prompt)
+            msg = UniMessage.template(prompt)
+        elif isinstance(prompt, Segment):
+            msg = UniMessage(prompt)
         else:
             msg = prompt
         return WaiterIterator(self, default, timeout, retry, msg)  # type: ignore
@@ -208,7 +200,7 @@ class Waiter(Generic[R]):
     @overload
     async def wait(
         self,
-        before: str | Message | MessageSegment | MessageTemplate | None = None,
+        before: _M | None = None,
         *,
         default: R | T,
         timeout: float = plugin_config.waiter_timeout,
@@ -217,14 +209,14 @@ class Waiter(Generic[R]):
     @overload
     async def wait(
         self,
-        before: str | Message | MessageSegment | MessageTemplate | None = None,
+        before: _M | None = None,
         *,
         timeout: float = plugin_config.waiter_timeout,
     ) -> R | None: ...
 
     async def wait(
         self,
-        before: str | Message | MessageSegment | MessageTemplate | None = None,
+        before: _M | None = None,
         *,
         default: R | T | None = None,
         timeout: float = plugin_config.waiter_timeout,
@@ -245,7 +237,8 @@ class Waiter(Generic[R]):
             handlers=[self.handler],
         )
         if before:
-            await matcher.send(before)
+            msg = _norm(before, {})
+            await matcher.send(await msg.export())
         try:
             return await asyncio.wait_for(self.future, timeout)
         except asyncio.TimeoutError:
@@ -303,16 +296,16 @@ def waiter(
 
 @overload
 async def prompt(
-    message: str | Message | MessageSegment | MessageTemplate,
+    message: _M,
     *,
     timeout: float = plugin_config.waiter_timeout,
     rule: T_RuleChecker | Rule | None = None,
-) -> Message | None: ...
+) -> UniMessage | None: ...
 
 
 @overload
 async def prompt(
-    message: str | Message | MessageSegment | MessageTemplate,
+    message: _M,
     handler: _DependentCallable[R],
     *,
     timeout: float = plugin_config.waiter_timeout,
@@ -321,7 +314,7 @@ async def prompt(
 
 
 async def prompt(
-    message: str | Message | MessageSegment | MessageTemplate,
+    message: _M,
     handler: _DependentCallable[R] | None = None,
     timeout: float = plugin_config.waiter_timeout,
     rule: T_RuleChecker | Rule | None = None,
@@ -337,10 +330,10 @@ async def prompt(
         符合条件的用户输入
     """
 
-    async def wrapper(event: Event):
-        return event.get_message()
+    async def wrapper(msg: UniMsg):
+        return msg
 
-    wrapper.__annotations__ = {"event": Event}
+    wrapper.__annotations__ = {"msg": UniMsg}
 
     if handler is None:
         wait = waiter(["message"], keep_session=True, block=True, rule=rule)(wrapper)
@@ -359,23 +352,23 @@ async def call_callable(func: Callable[[str], bool], s: str) -> bool:
 
 @overload
 async def prompt_until(
-    message: str | Message | MessageSegment | MessageTemplate,
-    checker: Callable[[Message], bool],
+    message: _M,
+    checker: Callable[[UniMessage], bool],
     *,
     matcher: type[Matcher] | Matcher | None = None,
     finish: bool = False,
     timeout: float = plugin_config.waiter_timeout,
     retry: int = 5,
-    retry_prompt: str | Message | MessageSegment | MessageTemplate = plugin_config.waiter_retry_prompt,
-    timeout_prompt: str | Message | MessageSegment | MessageTemplate = plugin_config.waiter_timeout_prompt,
-    limited_prompt: str | Message | MessageSegment | MessageTemplate = plugin_config.waiter_limited_prompt,
+    retry_prompt: _M = plugin_config.waiter_retry_prompt,
+    timeout_prompt: _M = plugin_config.waiter_timeout_prompt,
+    limited_prompt: _M = plugin_config.waiter_limited_prompt,
     rule: T_RuleChecker | Rule | None = None,
-) -> Message | None: ...
+) -> UniMessage | None: ...
 
 
 @overload
 async def prompt_until(
-    message: str | Message | MessageSegment | MessageTemplate,
+    message: _M,
     checker: Callable[[R], bool],
     handler: _DependentCallable[R],
     *,
@@ -383,15 +376,15 @@ async def prompt_until(
     finish: bool = False,
     timeout: float = plugin_config.waiter_timeout,
     retry: int = 5,
-    retry_prompt: str | Message | MessageSegment | MessageTemplate = plugin_config.waiter_retry_prompt,
-    timeout_prompt: str | Message | MessageSegment | MessageTemplate = plugin_config.waiter_timeout_prompt,
-    limited_prompt: str | Message | MessageSegment | MessageTemplate = plugin_config.waiter_limited_prompt,
+    retry_prompt: _M = plugin_config.waiter_retry_prompt,
+    timeout_prompt: _M = plugin_config.waiter_timeout_prompt,
+    limited_prompt: _M = plugin_config.waiter_limited_prompt,
     rule: T_RuleChecker | Rule | None = None,
 ) -> R | None: ...
 
 
 async def prompt_until(
-    message: str | Message | MessageSegment | MessageTemplate,
+    message: _M,
     checker: Callable[..., bool],
     handler: _DependentCallable[R] | None = None,
     *,
@@ -399,9 +392,9 @@ async def prompt_until(
     finish: bool = False,
     timeout: float = plugin_config.waiter_timeout,
     retry: int = 5,
-    retry_prompt: str | Message | MessageSegment | MessageTemplate = plugin_config.waiter_retry_prompt,
-    timeout_prompt: str | Message | MessageSegment | MessageTemplate = plugin_config.waiter_timeout_prompt,
-    limited_prompt: str | Message | MessageSegment | MessageTemplate = plugin_config.waiter_limited_prompt,
+    retry_prompt: _M = plugin_config.waiter_retry_prompt,
+    timeout_prompt: _M = plugin_config.waiter_timeout_prompt,
+    limited_prompt: _M = plugin_config.waiter_limited_prompt,
     rule: T_RuleChecker | Rule | None = None,
 ):
     """等待用户输入并返回结果
@@ -427,44 +420,48 @@ async def prompt_until(
         except LookupError:
             raise RuntimeError("No matcher found.")
 
-    await matcher.send(message)
+    msg = _norm(message, {})
+    await matcher.send(await msg.export())
 
-    async def wrapper(event: Event):
-        return event.get_message()
+    async def wrapper(uni: UniMsg):
+        return uni
 
-    wrapper.__annotations__ = {"event": Event}
+    wrapper.__annotations__ = {"uni": UniMsg}
 
     if handler is None:
         wait = waiter(waits=["message"], keep_session=True, matcher=matcher, rule=rule)(wrapper)
     else:
         wait = waiter(waits=["message"], keep_session=True, matcher=matcher, rule=rule)(handler)
 
+    timeout_p = _norm(timeout_prompt, {})
+    limited_p = _norm(limited_prompt, {})
+
     async for data in wait(timeout=timeout, retry=retry, prompt=retry_prompt):
         if data is None:
             if finish:
-                await matcher.finish(timeout_prompt)
+                await matcher.finish(await timeout_p.export())
             else:
-                await matcher.send(timeout_prompt)
+                await matcher.send(await timeout_p.export())
             return
         if not checker(data):
             continue
         return data  # type: ignore
     else:
         if finish:
-            await matcher.finish(limited_prompt)
+            await matcher.finish(await limited_p.export())
         else:
-            await matcher.send(limited_prompt)
+            await matcher.send(await limited_p.export())
 
 
 async def _suggest(
-    message: str | Message | MessageTemplate,
+    message: _M,
     check_list: list[str],
     use_not_expect: bool,
     timeout: float = plugin_config.waiter_timeout,
     retry: int = 5,
-    retry_prompt: str | Message | MessageSegment | MessageTemplate = plugin_config.waiter_retry_prompt,
-    timeout_prompt: str | Message | MessageSegment | MessageTemplate = plugin_config.waiter_timeout_prompt,
-    limited_prompt: str | Message | MessageSegment | MessageTemplate = plugin_config.waiter_limited_prompt,
+    retry_prompt: _M = plugin_config.waiter_retry_prompt,
+    timeout_prompt: _M = plugin_config.waiter_timeout_prompt,
+    limited_prompt: _M = plugin_config.waiter_limited_prompt,
     rule: T_RuleChecker | Rule | None = None,
 ):
     """等待用户输入, 检查是否符合选项，并返回结果
@@ -487,7 +484,7 @@ async def _suggest(
     except LookupError:
         raise RuntimeError("No matcher found.")
 
-    if isinstance(message, MessageTemplate):
+    if isinstance(message, UniMessageTemplate):
         _message = message.format(**matcher.state)
     else:
         _message = message
@@ -519,13 +516,13 @@ async def _suggest(
 
 
 async def suggest(
-    message: str | Message | MessageTemplate,
+    message: _M,
     expect: list[str],
     timeout: float = plugin_config.waiter_timeout,
     retry: int = 5,
-    retry_prompt: str | Message | MessageSegment | MessageTemplate = plugin_config.waiter_retry_prompt,
-    timeout_prompt: str | Message | MessageSegment | MessageTemplate = plugin_config.waiter_timeout_prompt,
-    limited_prompt: str | Message | MessageSegment | MessageTemplate = plugin_config.waiter_limited_prompt,
+    retry_prompt: _M = plugin_config.waiter_retry_prompt,
+    timeout_prompt: _M = plugin_config.waiter_timeout_prompt,
+    limited_prompt: _M = plugin_config.waiter_limited_prompt,
     rule: T_RuleChecker | Rule | None = None,
 ):
     """等待用户输入给出的选项并返回结果
@@ -557,13 +554,13 @@ async def suggest(
 
 
 async def suggest_not(
-    message: str | Message | MessageTemplate,
+    message: _M,
     not_expect: list[str],
     timeout: float = plugin_config.waiter_timeout,
     retry: int = 5,
-    retry_prompt: str | Message | MessageSegment | MessageTemplate = plugin_config.waiter_retry_prompt,
-    timeout_prompt: str | Message | MessageSegment | MessageTemplate = plugin_config.waiter_timeout_prompt,
-    limited_prompt: str | Message | MessageSegment | MessageTemplate = plugin_config.waiter_limited_prompt,
+    retry_prompt: _M = plugin_config.waiter_retry_prompt,
+    timeout_prompt: _M = plugin_config.waiter_timeout_prompt,
+    limited_prompt: _M = plugin_config.waiter_limited_prompt,
 ):
     """等待用户输入非候选项并返回结果
 
