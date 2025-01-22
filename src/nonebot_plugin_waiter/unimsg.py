@@ -14,7 +14,7 @@ from nonebot.internal.adapter import Bot, Event
 from nonebot.internal.permission import User, Permission
 from nonebot.utils import run_sync, is_coroutine_callable
 from nonebot.internal.matcher import current_event, current_matcher
-from nonebot.typing import T_State, T_RuleChecker, _DependentCallable
+from nonebot.typing import T_State, T_RuleChecker, T_PermissionChecker, _DependentCallable
 
 require("nonebot_plugin_alconna")
 
@@ -26,7 +26,7 @@ _M = Union[str, Segment, UniMessage, UniMessageTemplate]
 
 from .config import Config
 
-__version__ = "0.7.0"
+__version__ = "0.8.1"
 
 plugin_config = get_plugin_config(Config)
 
@@ -98,7 +98,7 @@ class Waiter(Generic[R]):
         handler: _DependentCallable[R],
         matcher: type[Matcher] | Matcher,
         parameterless: Iterable[Any] | None = None,
-        permission: Permission | None = None,
+        permission: Permission | T_PermissionChecker | None = None,
         block: bool = True,
         rule: T_RuleChecker | Rule | None = None,
     ):
@@ -257,6 +257,7 @@ def waiter(
     parameterless: Iterable[Any] | None = None,
     keep_session: bool = False,
     rule: T_RuleChecker | Rule | None = None,
+    permission: Permission | T_PermissionChecker | None = None,
     block: bool = True,
 ) -> Callable[[_DependentCallable[R]], Waiter[R]]:
     """装饰一个函数来创建一个 `Waiter` 对象用以等待用户输入
@@ -270,6 +271,7 @@ def waiter(
         parameterless: 非参数类型依赖列表
         keep_session: 是否保持会话，即仅允许会话发起者响应
         rule: 事件响应规则
+        permission: 权限检查器
         block: waiter 成功响应后是否阻塞事件传递，默认为 `True`
     """
     if not matcher:
@@ -278,15 +280,12 @@ def waiter(
         except LookupError:
             raise RuntimeError("No matcher found.")
 
-    if not keep_session:
-        permission = None
-    else:
+    if keep_session:
         try:
             event = current_event.get()
-        except LookupError:
-            permission = None
-        else:
             permission = Permission(User.from_event(event, perm=matcher.permission))
+        except LookupError:
+            pass
 
     def wrapper(func: _DependentCallable[R]):
         return Waiter(waits, func, matcher, parameterless, permission, block, rule)
