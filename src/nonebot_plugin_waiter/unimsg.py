@@ -89,7 +89,6 @@ class WaiterIterator(Generic[R, T]):
 
 
 class Waiter(Generic[R]):
-    future: asyncio.Future
     handler: _DependentCallable[R]
 
     def __init__(
@@ -110,7 +109,7 @@ class Waiter(Generic[R]):
             event_types = ()
             event_str_types = (matcher.type,)
             self.event_type = matcher.type
-        self.future = asyncio.Future()
+        self._future = asyncio.Future()
         _handler = Dependent[Any].parse(
             call=handler, parameterless=parameterless, allow_types=matcher.HANDLER_PARAM_TYPES
         )
@@ -125,7 +124,7 @@ class Waiter(Generic[R]):
                 matcher.skip()
             if event_str_types and event.get_type() not in event_str_types:
                 matcher.skip()
-            if self.future.done():
+            if self._future.done():
                 matcher.skip()
             result = await _handler(
                 matcher=matcher,
@@ -133,8 +132,8 @@ class Waiter(Generic[R]):
                 event=event,
                 state=state,
             )
-            if result is not None and not self.future.done():
-                self.future.set_result(result)
+            if result is not None and not self._future.done():
+                self._future.set_result(result)
                 if block:
                     matcher.stop_propagation()
                 await matcher.finish()
@@ -228,6 +227,11 @@ class Waiter(Generic[R]):
             default: 超时时返回的默认值
             timeout: 等待超时时间
         """
+        if self._future.done():
+            try:
+                return self._future.result()
+            finally:
+                self._future = asyncio.Future()
         matcher = on(
             type=self.event_type,
             rule=self.rule,
@@ -240,15 +244,24 @@ class Waiter(Generic[R]):
             msg = _norm(before, {})
             await matcher.send(await msg.export())
         try:
-            return await asyncio.wait_for(self.future, timeout)
+            return await asyncio.wait_for(self._future, timeout)
         except asyncio.TimeoutError:
             return default
         finally:
-            self.future = asyncio.Future()
+            self._future = asyncio.Future()
             try:
                 matcher.destroy()
             except (IndexError, ValueError):
                 pass
+
+    def set_result(self, result: R):
+        """提前设置 Waiter 结果
+
+        在下次等待前设置结果，如果已经设置过结果则抛出 ValueError
+        """
+        if not self._future.done():
+            self._future.set_result(result)
+        raise ValueError("Future already done")
 
 
 def waiter(
